@@ -1,0 +1,69 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage = '
+Tool:        indel_realign_grch37
+About:       GATK indel realignment wrapper
+
+Notes:       ! This wrapper is for hg19/GRCh37 d5 !
+             resource files used are hardcoded and 
+             located in gleesonlab5/resources/gatk_grch37
+
+Usage:       indel_realign_grch37 <in.bam> [threads] [memory] [tmp dir]
+
+
+Required Arguments:
+    in.bam    FILE    markduped bam file
+
+Options:
+    threads   INT     number of threads [4]
+    memory    STR     memory allocation [16g]
+    tmp dir   PATH    location of temporary directory
+
+';
+#########################
+my $ref = "/home/dantakli/ref/human_g1k_v37_decoy.fasta";
+my $mills = "/projects/ps-gleesonlab5/resources/gatk_grch37/Mills_and_1000G_gold_standard.indels.b37.sites.vcf";
+my $kgp = "/projects/ps-gleesonlab5/resources/gatk_grch37/1000G_phase1.indels.b37.vcf";
+my $java = "/home/dantakli/java/jre1.8.0_73/bin/java";
+my $gatk = "/home/dantakli/bin/GenomeAnalysisTK-3.8-1/GenomeAnalysisTK.jar";
+#########################
+# USER ARGS
+my $bam = $ARGV[0];
+die "\n$usage\n" if (! defined $bam);
+
+my $threads = $ARGV[1];
+$threads = 4 if(! defined $threads);
+
+my $memory = $ARGV[2];
+$memory = "16g" if(! defined $memory);
+
+my $tmpdir = $ARGV[3];
+if(! defined $tmpdir) { 
+	$tmpdir = $bam;	
+	$tmpdir =~ s/\.bam$/\_tmp/;
+}
+$tmpdir = $tmpdir."/" if($tmpdir !~ /\/$/);
+system("mkdir -p $tmpdir");
+#########################
+my $rtc_out = $bam; 
+$rtc_out =~ s/\.bam$/\.indelrealign\.intervals/;
+
+my $ts = timestamp();
+warn "\n>>> Starting RealignerTargetCreator... $ts <<<\n"; 
+
+my $resources = "-R $ref -known $mills -known $kgp";
+my $prefix = "$java -Xmx$memory -Djava.io.tmpdir=$tmpdir -jar $gatk";
+
+my $rtc_cmd = "$prefix -T RealignerTargetCreator -nt $threads $resources -I $bam -o $rtc_out";
+
+system($rtc_cmd);
+$ts = timestamp();
+warn "\n>>> Finished RealignerTargetCreator... $ts <<<\n"; 
+my $rm = "rm -fr $tmpdir"; 
+system($rm);
+
+#########################
+sub timestamp {
+	chomp(my $ts = `date +%Y-%m-%d" "%H:%M:%S`); 
+	return $ts;
+}

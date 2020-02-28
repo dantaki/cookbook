@@ -1,0 +1,71 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        delly_format_del_vcf
+About:       format a vcf for genotyping dellications with delly 
+
+Usage:       delly_format_del_vcf <vcf> [ct id]
+
+Required Arguments:
+    vcf      FILE        sv vcf with dellication calls 
+
+Optional Arguments:
+    ct id    STR         connection type INFO id [default: CT]
+          
+Notes:
+
+    required entries in the INFO column are END and SVTYPE
+
+    output is recorded as in.dellyformatted.del.vcf
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+
+';
+
+my $vcf = $ARGV[0];
+die "\n$usage\n" if(! defined $vcf);
+my $CT = $ARGV[1];
+$CT = "CT" if(! defined $CT);
+
+my $ovcf = "$vcf";
+$ovcf =~ s/\.vcf/\.dellyformatted\.del\.vcf/;
+$ovcf =~ s/\.gz//;
+open OUT, ">$ovcf\n"; 
+open IN, "/home/dantakli/recipe/vcf_headers/grch37_delly_gt.txt";
+while(<IN>){ print OUT $_; } close IN;
+
+open IN, "less $vcf |";
+while(<IN>){
+	chomp;
+	my @r = split /\t/, $_;
+	undef my %info;
+	if($_ !~ /^\#/){
+		my @info = split /\;/, $r[7];
+		foreach my $i (@info) { 
+			my @i = split /\=/, $i;
+			undef my $v;
+			if(scalar(@i) == 1) { $v=""; } 
+			else { $v=$i[1]; } 
+			my $k = $i[0];	
+			$info{$k}=$v;
+		}
+		next if(! exists $info{"SVTYPE"});
+		next if($info{"SVTYPE"} ne "DEL"); 
+		my $method = "EMBL.DELLYv0.8.1";
+		my $info = join ";", @info;
+		if (! exists $info{"SVMETHOD"}) { $info = "$info;SVMETHOD=$method"; } 
+		if (! exists $info{"CHR2"}) { $info = "$info;CHR2=$r[0]"; } 
+		if (exists $info{$CT}) { 
+			$info =~ s/$CT=/CT=/ if($CT ne "CT"); 
+			my $o = join "\t", @r[ 0 .. 6], $info; 
+			print OUT $o,"\n"; 
+		} else { 
+			my $o = join "\t", @r[ 0 .. 6]; 
+			print OUT "$o\t$info;CT=3to5\n"; 
+		}
+	}
+}close IN; close OUT; 
+
+
+warn "  output ---> $ovcf\n"; 

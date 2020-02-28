@@ -1,0 +1,24 @@
+#!/usr/bin/env python
+from argparse import RawTextHelpFormatter
+import argparse
+import os
+import sys
+
+parser = argparse.ArgumentParser(formatter_class=RawTextHelpFormatter)
+parser.add_argument('-i',type=str, required=True,help='bam')
+parser.add_argument('-o',type=str, required=True,help='output prefix')
+parser.add_argument('-t',type=int, required=False,help='threads',default=1)
+
+args = parser.parse_args()
+
+bam = args.i
+out_pfx = args.o
+threads = args.t
+ofh = out_pfx+'.split.bam'
+
+cmd = 'samtools view -bh -@ {} -o {} -f 2048 {}'.format(threads,ofh,bam)
+os.system(cmd)
+sys.stderr.write('  >>>extracted split reads<<<\n')
+os.system('samtools index -@ {} {}'.format(threads,ofh))
+sys.stderr.write('  >>>indexed split read bam file<<<\n')
+

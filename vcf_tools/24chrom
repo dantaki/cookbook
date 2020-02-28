@@ -1,0 +1,45 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        24chrom
+About:       get chromosomes 1-22,X,Y from a VCF file
+
+Usage:       sortbam <vcf> [-chr] 
+
+Required Arguments:
+    vcf    FILE    vcf file
+
+Optional Arguments:
+    -chr           remove "chr" prefix 
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $vcf = $ARGV[0];
+die "$usage" if(! defined $vcf);
+my $argv = join " ",@ARGV;
+my $pre="chr";
+$pre = "" if($argv =~ /-chr/);
+
+undef my %chrom;
+for(my $i=1; $i<23; $i++) { 
+	$chrom{"$pre$i"}++;
+}
+$chrom{"${pre}X"}++;
+$chrom{"${pre}Y"}++;
+
+if($vcf eq "/dev/stdin/"){ 
+	while(<STDIN>) { 
+		chomp; my @r = split /\t/, $_;
+		if($_ =~ /^\#/) { print "$_\n"; } 
+		else { print "$_\n" if(exists $chrom{$r[0]}); }
+	}
+} else { 
+	open IN, "less $vcf | ";
+	while(<IN>){ 
+                chomp; my @r = split /\t/, $_;
+                if($_ =~ /^\#/) { print "$_\n"; } 
+                else { print "$_\n" if(exists $chrom{$r[0]}); }
+	}close IN;
+}

@@ -1,0 +1,71 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage = '
+Tool:        bqsr_printreads_grch37
+About:       GATK bqsr printreads wrapper
+
+Notes:       ! This wrapper is for hg19/GRCh37 d5 !
+             resource files used are hardcoded and 
+             located in gleesonlab5/resources/gatk_grch37
+
+Usage:       bqsr_printreads_grch37 <in.bam> [threads] [memory] [tmp dir]
+
+
+Required Arguments:
+    in.bam    FILE    bam file
+
+Options:
+    threads   INT     number of threads [4]
+    memory    STR     memory allocation [16g]
+    tmp dir   PATH    location of temporary directory
+
+';
+#########################
+my $ref = "/projects/ps-gleesonlab5/reference_fasta/human_g1k_v37_decoy.fasta";
+my $java = "/home/dantakli/java/jre1.8.0_73/bin/java";
+my $gatk = "/home/dantakli/bin/GenomeAnalysisTK-3.8-1/GenomeAnalysisTK.jar";
+#########################
+# USER ARGS
+my $bam = $ARGV[0];
+die "\n$usage\n" if (! defined $bam);
+
+my $threads = $ARGV[1];
+$threads = 4 if(! defined $threads);
+
+my $memory = $ARGV[2];
+$memory = "16g" if(! defined $memory);
+
+my $tmpdir = $ARGV[3];
+if(! defined $tmpdir) { 
+	$tmpdir = $bam;	
+	$tmpdir =~ s/\.bam$/\_tmp/;
+}
+$tmpdir = $tmpdir."/" if($tmpdir !~ /\/$/);
+system("mkdir -p $tmpdir");
+#########################
+my $rcl_out = $bam; 
+$rcl_out =~ s/\.bam$/\.bqsr_recal_data\.table/;
+
+my $obam = $bam;
+$obam =~ s/\.bam$/\.bqsr\.bam/;
+
+my $ts = timestamp();
+warn "\n>>> Starting BQSRPrintReads... $ts <<<\n"; 
+
+my $resources = "-R $ref -BQSR $rcl_out "; 
+my $prefix = "$java -Xmx$memory -Djava.io.tmpdir=$tmpdir -jar $gatk";
+
+my $rcl_cmd = "$prefix -T PrintReads -nct $threads $resources -I $bam -o $obam";
+
+system($rcl_cmd);
+
+$ts = timestamp();
+warn "\n>>> Finished BQSRPrintReads... $ts <<<\n"; 
+my $rm = "rm -fr $tmpdir"; 
+system($rm);
+
+#########################
+sub timestamp {
+	chomp(my $ts = `date +%Y-%m-%d" "%H:%M:%S`); 
+	return $ts;
+}

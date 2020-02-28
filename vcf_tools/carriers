@@ -1,0 +1,112 @@
+#!/usr/bin/perl
+use strict; use warnings;
+use List::MoreUtils qw(uniq);
+
+my $usage='
+Tool:        carriers  
+About:       print carriers of alt genotypes 
+
+Usage:       carriers <vcf> <fam> [outfile]
+
+Required Arguments:
+    vcf    FILE    vcf file
+    fam    FILE    fam file, plink format 
+
+Optional Arguments:
+    out     FILE    output file name
+
+Notes:
+    carriers requires bcftools to be installed
+    in the environment path. 
+
+    output records the 0-base position
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $vcf = $ARGV[0];
+my $fam = $ARGV[1];
+
+die "FATAL ERROR: VCF NOT FOUND\n$usage\n" if(! defined $vcf);
+die "FATAL ERROR: FAM FILE NOT FOUND\n$usage\n" if(! defined $fam);
+
+my $out = $ARGV[2];
+if(! defined $out){
+	$out = $vcf; $out =~ s/\.vcf//; $out =~ s/.gz//; 
+	$out = $out.".carriers.txt"; 
+}
+
+my $header = "#CHROM\tSTART\tEND\tREF\tALT\tID\tDADS\tMOMS\tPROBANDS\tCONTROLS\tFID\n"; 
+open OUT, ">$out";
+print OUT $header;
+
+undef my %rel; undef my %phen; undef my %fid;
+open IN, "$fam"; 
+while(<IN>){
+	chomp; 
+	my ($fid,$iid,$dad,$mom,$sex,$phen) = split /\t/, $_;
+	if($dad ne "0") { $rel{$dad}="D"; } 
+	if($mom ne "0") { $rel{$mom}="M"; }
+	if($dad ne "0") { $phen{$iid}=$phen; }
+	$fid{$iid}=$fid; 
+}close IN;
+
+undef my @dad; undef my @mom;
+undef my @cas; undef my @con;
+undef my @fid; undef my $sv;
+
+my $print=0;
+
+my $format_str = "%CHROM\\t%POS0\\t%END\\t%REF\\t%ALT\\t%ID\\t%SAMPLE\\n";
+open IN, "bcftools query -i'GT==\"alt\"' -f'[$format_str]' $vcf |";
+while(<IN>){
+	chomp;
+	my @r = split /\t/, $_;
+	my $iid = $r[-1];
+	my $k = join "\t", @r[ 0 .. 5 ]; 
+	
+	if(! defined $sv) { $sv=$k; }
+	if($sv ne $k) { 
+		
+		my $d = "."; my $m ="."; my $a="."; my $c=".";
+		my $f = "."; 
+		$d = join ";", @dad if(scalar(@dad) > 0);
+		$m = join ";", @mom if(scalar(@mom) > 0);
+		$a = join ";", @cas if(scalar(@cas) > 0);
+		$c = join ";", @con if(scalar(@con) > 0);
+		@fid = uniq @fid; 
+		$f = join ";", @fid if(scalar(@fid) > 0); 
+		my $o = join "\t", $sv,$d,$m,$a,$c,$f; 
+		print OUT $o,"\n"; 
+		undef @dad; undef @mom;
+		undef @cas; undef @con;
+		undef @fid; 
+		$sv = $k;	
+	} 
+	if($sv eq $k) {  
+	if(exists $rel{$iid}){
+		my $rel = $rel{$iid};
+		push @dad, $iid if($rel eq "D");
+		push @mom, $iid if($rel eq "M");
+	}
+	if(exists $phen{$iid}){
+		my $phen = $phen{$iid};
+		push @cas, $iid if($phen eq "2");
+		push @con, $iid if($phen eq "1"); 
+	}
+	if(exists $fid{$iid}) { push @fid, $fid{$iid}; } 
+	}
+}close IN;
+if(defined $sv) { 
+my $d = "."; my $m ="."; my $a="."; my $c="."; my $f = ".";
+$d = join ";", @dad if(scalar(@dad) > 0);
+$m = join ";", @mom if(scalar(@mom) > 0);
+$a = join ";", @cas if(scalar(@cas) > 0);
+$c = join ";", @con if(scalar(@con) > 0);
+@fid = uniq @fid; 
+$f = join ";", @fid if(scalar(@fid) > 0);
+my $o = join "\t", $sv,$d,$m,$a,$c,$f; 
+print OUT $o,"\n"; 
+} 
+close OUT; 

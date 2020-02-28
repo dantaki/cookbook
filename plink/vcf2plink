@@ -1,0 +1,66 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        vcf2plink
+About:       convert a vcf to plink bfiles 
+
+Usage:       vcf2plink <vcf file> [region] [output directory]
+
+Required Arguments:
+    vcf file                vcf file, bgzipped and tabixed
+
+Optional Arguments:
+    region                  1-base position as chrom:start-end
+    output directory        path for output files, by
+                            default the path to the input 
+                            VCF is used 
+
+Notes:
+    vcf2plink requires both plink-1.07 and plink-1.9 in the
+    environment path. If this is not the case, please change
+    the $PLINK_107 and $PLINK_19 paths in this script.
+
+    By default, plink-1.9 is recognized as \'plink\' while
+    plink-1.07 is recognized as \'plink-1.07\'. Change the
+    variables above if this is not the case. 
+
+    vcf2plink also requires bcftools to be in the environment
+    path
+
+WARNING!
+    vcf2plink creates a lot of temporary files, it is
+    recommended to run this script in 25Mb windows and to
+    output results in scratch space. 
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $vcf = $ARGV[0];
+die "FATAL ERROR: vcf file required.\n$usage\n" if(! defined $vcf);
+
+my $region = $ARGV[1];
+if(defined $region) { $region = "-r ".$region; }
+else { $region = ""; } 
+
+my $odir = $ARGV[2];
+my @odir = split /\//, $vcf;
+my $ovcf = pop @odir;
+$odir = join "/", @odir if(! defined $odir); 
+$odir = $odir."/" unless($odir =~ /\/$/); 
+
+# 1. split multiallelic and reannotate the variant ID column
+
+$ovcf =~ s/\.vcf//; $ovcf =~ s/\.gz//; 
+$ovcf = "${odir}${ovcf}.${region}.vcf.gz";
+my $cmd = "bcftools view $vcf $region  | bcftools norm -m -any | bcftools annotate -x ID -I +'%CHROM:%POS0:%END:%REF:%ALT' -Oz >$ovcf";
+
+system($cmd); 
+
+# 2. convert to plink bfile
+my $pre = $ovcf; $pre =~ s/\.vcf\.gz//; 
+$cmd = "plink --vcf $ovcf --make-bed --out ${odir}${pre}";
+
+system($cmd);
+
+warn "\n  output ---> ${odir}${pre}\n";  

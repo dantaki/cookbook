@@ -1,0 +1,101 @@
+#!/usr/bin/perl
+use strict; use warnings;
+use Statistics::Basic qw/median/;
+
+my $usage='
+Tool:        cnv_chrom 
+About:       log2ratio and b-allele frequency from a snp vcf
+
+Usage:       cnv_chrom <vcf> <chrom> [norm chrom] [sample]
+
+Required Arguments:
+    vcf           PATH    path to vcf
+    chrom         STR     chromosome name
+
+Options:
+    norm chrom    STR     chromosome to normalize depth
+    sample        STR     comma separated list of samples 
+
+Notes: 
+    cnv_chrom requires bcftools to be installed in the
+    environment path. 
+
+    cnv_chrom requires Statistics::Basic 
+
+    norm chrom option is useful for large cnvs
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+
+';
+
+my $vcf = $ARGV[0];
+die "FATAL ERROR: vcf missing\n$usage\n" if(! defined $vcf);
+my $chrom = $ARGV[1];
+die "FATAL ERROR: chromosome not defined!\n$usage\n" if(! defined $chrom); 
+
+my $norm = $ARGV[2];
+$norm=$chrom if(! defined $norm); 
+
+undef my @samples;
+if(defined $ARGV[3]){ @samples = split /,/, $ARGV[2]; } 
+undef my %ok;
+if(scalar(@samples)>0) { $ok{$_}++; } 
+
+## get median depth
+undef my %dp; 
+open IN, "bcftools query -r $norm -f'[%SAMPLE,%DP\\n]' $vcf |";
+while(<IN>){
+	chomp;
+	my ($iid,$dp) = split /,/, $_; 	
+	next if(scalar(@samples)>0 && ! exists $ok{$iid}); 
+	next if($dp eq ".");
+	push @{$dp{$iid}}, $dp; 
+}close IN;
+
+warn "    >>> finished parsing depth <<<\n";
+undef my %med;
+
+foreach my $iid (sort keys %dp) {
+	my $med = median(\@{$dp{$iid}});
+	$med =~ s/,//g;
+	warn "    >>> median depth::${iid}::${chrom}::$med <<<\n";
+	$med{$iid}=$med;
+}
+
+undef my %dat;
+undef my %var;
+open IN, "bcftools query -r $chrom -f'[%POS\\t%REF\\t%ALT\\t%SAMPLE\\t%DP\\t%AD\\n]' $vcf |";
+while(<IN>){
+	chomp;
+	my ($pos,$ref,$alt,$iid,$dp,$ad) = split /\t/, $_;
+	next if(scalar(@samples)>0 && ! exists $ok{$iid}); 
+        next if($dp eq ".");
+	my @allele = split /,/, $ad; 
+	next if(scalar(@allele) != 2); 
+	my ($a,$b) = @allele; 
+	$dp++; $a++; $b++;
+	my $lrr = log2( $dp / $med{$iid} );
+	my $baf = $b / ($a+$b); 
+
+	my $k = join "\t", $ref,$alt;
+	$dat{$pos}{$iid}="$lrr\t$baf";
+	$var{$pos}=$k;
+}close IN;
+
+warn "    >>> writing output <<<\n"; 
+
+print "chrom\tpos\tref\talt\tiid\tlrr\tbaf\n";
+foreach my $p (sort {$a<=>$b} keys %dat){
+	foreach my $iid (sort keys %{$dat{$p}}) { 
+		print "$chrom\t$p\t$var{$p}\t$iid\t$dat{$p}{$iid}\n"; 
+	}
+} 
+
+warn "    >>> d o n e <<<\n"; 
+
+#############
+sub log2 {
+	my $n = shift;
+	return log($n)/log(2);
+}

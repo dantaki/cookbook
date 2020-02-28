@@ -1,0 +1,66 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        bincov 
+About:       calculate coverage in bins 
+
+Usage:       bincov <bam> <region> [window]  
+
+Required Arguments:
+    bam       PATH    path to bam file     
+    region    STR     <chr:from-to> 1-base
+
+Optional Arguments:
+    window    INT     window size [100]
+
+Notes: 
+    bincov requires samtools and bedtools
+    to be installed in the environment path
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $bam = $ARGV[0];
+my $region = $ARGV[1];
+
+die "FATAL ERROR  bam not defined\n$usage\n" if(! defined $bam);
+die "FATAL ERROR  region not defined\n$usage\n" if(! defined $region);
+
+my $window = $ARGV[2];
+$window=100 if(! defined $window);
+
+# get base pair depth
+my @bam = split /\//, $bam;
+my $fh = pop @bam; $fh =~ s/\.bam//; $fh =~ s/.sam//; $fh =~ s/\.cram//; 
+
+my $odepth = "$fh\.depth.bed";
+open OUT, ">$odepth";
+open IN, "samtools depth -a -r $region $bam | "; 
+while(<IN>){ 
+	chomp;
+	my ($c,$p,$d) = split /\t/, $_;
+	my $s = $p-1; 
+	print OUT "$c\t$s\t$p\t$d\n"; 
+}close IN; close OUT; 
+
+# make windows
+my ($chrom,$pos) = split /:/, $region;
+my ($start,$end) = split /-/, $pos;
+$start--; 
+
+my $wind = "$fh\.$window\.windows\.bed"; 
+open OUT, ">$wind"; 
+for (my $i=$start; $i<=$end; $i+=$window) { 
+	my $e = $i+$window;
+	print OUT "$chrom\t$i\t$e\n"; 
+} close OUT;
+
+# get binned depth
+
+open IN, "bedtools coverage -a $wind -b $odepth |";
+while(<IN>){ print $_; }  close IN;
+#system("rm -f $odepth");
+#system("rm -f $wind"); 
+
+

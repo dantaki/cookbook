@@ -1,0 +1,163 @@
+#!/usr/bin/perl
+use strict; use warnings;
+use Time::localtime qw(localtime);
+
+#----------------------------------------------------------------------------------#
+my $usage = "vcf2plinkaf <in.vcf> <in.fam> [output directory] [id-delimiter]"; 
+my $vcf = $ARGV[0];
+my $fam = $ARGV[1];
+
+die "FATAL ERROR: VCF NOT DEFINED\n    $usage\n" if(! defined $vcf);
+die "FATAL ERROR: FAM FILE NOT DEFINED\n    $usage\n" if(! defined $fam);
+
+my $odir = $ARGV[2];
+if(! defined $odir) { 
+	my @f = split /\//, $vcf;
+	pop @f;
+	$odir = join "/", @f;
+}
+
+my $delim = $ARGV[3];
+
+$odir=$odir."/" if($odir !~ /\/$/);
+system("mkdir -p $odir");
+#----------------------------------------------------------------------------------#
+
+############ CHANGE THESE PATHS IF NEEDED ############
+my $plink1_9="/projects/ps-sebat1/tools/plink";
+my $plink1_07="/projects/ps-sebat1/tools/plink-1.07 --noweb";
+######################################################
+
+# ---------------------------------------------------------------------------------#
+my @f = split /\//, $vcf; my $pre = pop @f;
+$pre =~ s/\.gz//; $pre =~ s/\.vcf//; 
+
+my $upid = $odir.$pre.".update.ids";
+my $uppar = $odir.$pre.".update.parents";
+my $upsex = $odir.$pre.".update.sex";
+
+open UP, ">$upid";
+open PA, ">$uppar";
+open SX, ">$upsex";
+
+undef my %par; undef my %kid;
+undef my %sex; 
+open IN, $fam;
+while(<IN>){
+	chomp;
+	my @r = split /\t/, $_;
+	@r = split / /, $_ if(scalar @r == 1);
+	my ($fid,$iid,$pat,$mat,$sex,$phen) = @r[0 .. 5];
+
+	if($pat eq "0") { $par{$iid}++; } 
+	else { $kid{$iid}++; } 	
+	$sex{$iid}=$sex; 	
+
+	print UP "$iid $iid $fid $iid\n";
+	print PA "$fid $iid $pat $mat\n"; 
+	print SX "$fid $iid $sex\n"; 
+}close IN; 
+close UP; close PA; close SX; 
+
+my $ffound=0; my $mfound=0;
+open IN, "bcftools view -h $vcf |";
+while(<IN>){
+	chomp;
+	next unless($_ =~ /^\#CHROM/);
+	my @r = split /\t/, $_;
+	for (my $i=9; $i<scalar(@r); $i++) {
+		my $id = $r[$i];
+		undef my $iid;
+		if(defined $delim) { 
+			my @id = split /$delim/, $id;
+			$iid = $id[-1]; 
+		} else { $iid = $id;  }
+		if(exists $par{$iid} && ! exists $kid{$iid})  {
+			$mfound++ if($sex{$iid}==1);	
+			$ffound++ if($sex{$iid}==2); 
+			# unknown genders are females
+			$ffound++ if($sex{$iid}!=1 && $sex{$iid}!=2); 	
+		}
+	}
+}close IN;
+
+undef my @plink_cmds;
+# 1. VCF - plink bfile
+my $vcfbfile = "$plink1_9 --vcf $vcf --make-bed --double-id --out $odir$pre";
+my $upid_cmd = "$plink1_9 --bfile $odir$pre --update-ids $upid --make-bed --out $odir$pre\.up";
+my $uppar_sex_cmd = "$plink1_9 --bfile $odir$pre\.up --update-parents $uppar --update-sex $upsex --make-bed --out $odir$pre\.plink";
+
+if(defined $delim){ 
+	$delim = "\\".$delim if($delim =~ /[\|\(\)\#\$]/); 
+	$vcfbfile = "$plink1_9 --vcf $vcf --make-bed --id-delim $delim --out $odir$pre\n";  
+	$uppar_sex_cmd =~ s/--bfile $odir$pre\.up/--bfile $odir$pre/; 
+	push @plink_cmds, ($vcfbfile,$uppar_sex_cmd); 	
+} else { push @plink_cmds, ($vcfbfile,$upid_cmd,$uppar_sex_cmd) } 
+ 
+# 2. plink af
+my $af_cmd = "$plink1_9 --bfile $odir$pre\.plink --freq counts --out $odir$pre\.plink ";
+
+push @plink_cmds, ($af_cmd); 
+
+foreach my $cmd (@plink_cmds){ system($cmd); } 
+undef my %af; undef my %multi;
+# 3. tabulate results
+open IN, "$odir$pre\.plink.frq.counts";
+<IN>;
+while(<IN>){
+	chomp;
+	my $r = tokenize_plink($_);
+	my $id = $$r[1];
+	my ($c,$s,$e,$ref,$a) = split /\:/, $id;
+	my $min = $$r[2];
+	my $ac = $$r[4];
+	$ac = $$r[5] if($a ne $min);
+	my $founders = 2*($ffound+$mfound);
+	$founders = (2*$ffound)+$mfound if($c =~ /X/);
+	$founders = $mfound if($c=~ /Y/); 
+	my $tot = $founders;
+	
+	$af{$id}{"ac"}+=$ac;
+	$af{$id}{"tot"}+=$tot;
+	$multi{"$c\t$s"}++; 	
+}close IN;
+
+my $out = timestamp();
+$out = $odir.$pre.".plink.af.".$out.".tsv";
+open OUT, ">$out";
+print OUT "id\taf\tac\ttot\taf_class\tvariant_class\tmultiallelic\n"; 
+foreach my $id (sort keys %af) {
+	my ($c,$s,$e,$r,$a) = split /:/, $id;
+	my $var = "SNV";
+	$var="INDEL" if(length($r)>1 || length($a)>1);
+	my $multi=0;
+	$multi=1 if($multi{"$c\t$s"}>1);
+	my $ac = $af{$id}{"ac"};
+	my $tot = $af{$id}{"tot"}; 
+	my $af = $ac/$tot;
+	my $class = "COMMON";
+	$class = "RARE" if($af <= 0.01);
+	$class = "PRIVATE" if($ac == 1);
+	$class = "DNM" if($ac==0);
+	
+	print OUT "$id\t$af\t$ac\t$tot\t$class\t$var\t$multi\n"; 
+
+} close OUT; 
+
+warn "-" x 80, "\n  output ---> $out\n", "-" x 80, "\n"; 
+
+#########
+sub tokenize_plink {
+	my $l = shift @_;
+	my @r = split / /, $_;
+	undef my @t;
+	foreach(@r) { if ($_ ne "" && $_ ne " "){ push @t, $_;} }
+	return \@t;
+}
+
+sub timestamp {
+  my $t = localtime;
+  return sprintf( "%02d%02d%04d",
+                  $t->mday, $t->mon+1, $t->year + 1900);
+}
+

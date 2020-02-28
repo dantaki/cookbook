@@ -1,0 +1,41 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        sortbam
+About:       Sort a BAM file with sambamba
+
+Usage:       sortbam <bam file> [threads] [tmp dir] [output file] 
+
+Required Arguments:
+    bam file        unsorted bam file
+
+Optional Arguments:
+    threads        number of threads [default: 1]
+    tmp dir        path to temporary directory
+    output file    path to output file [default: in.sorted.bam]
+
+Notes: 
+    sortbam requires the user to have sambamba to be in the 
+    environment path
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $bam = $ARGV[0];
+die "FATAL ERROR: bam file required\n$usage\n" if(! defined $bam);
+
+my $tmpdir = $ARGV[2];
+$tmpdir = "--tmpdir ".$tmpdir if(defined $tmpdir);
+$tmpdir = "" if(! defined $tmpdir);
+
+my $output = $ARGV[3];
+$output = "-o ".$output if(defined $output);
+$output = "" if(! defined $output);
+
+my $threads= $ARGV[1];
+$threads=1 if(! defined $threads);
+
+my $cmd = "sambamba sort $tmpdir $output -t $threads $bam";
+
+system($cmd); 

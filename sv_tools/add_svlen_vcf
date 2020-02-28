@@ -1,0 +1,40 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        add_svlen_vcf
+About:       adds the SVLEN entry in the INFO field for SV VCFs 
+
+Usage:       add_svlen_vcf <in.vcf> 
+
+Required Arguments:
+    in.vcf              PATH        VCF file 
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $vcf = $ARGV[0];
+die "FATAL ERROR $vcf NOT DEFINED!\n$usage\n" if(! defined $vcf); 
+
+open IN, "less $vcf |";
+while(<IN>){
+	chomp;
+	my @r=  split /\t/, $_;
+	if($_ =~ /^\#/) { 
+		print $_,"\n"; 
+	} else{ 
+		my $start = $r[1]; 
+		$start--; 
+		undef my $end;
+		my $info = $r[7];
+		my @info = split /\;/, $info;
+		foreach my $i (@info) { 
+			if($i =~ /^END=/) { $end = $i; } 
+		}
+		$end =~ s/END=//;
+		my $len = $end-$start;
+		$r[7] = $info.";SVLEN=$len";
+		my $o = join "\t", @r;
+		print "$o\n"; 
+	}
+}close IN;

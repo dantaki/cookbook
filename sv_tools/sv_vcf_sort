@@ -1,0 +1,53 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        sv_vcf_sort
+About:       Sort a SV VCF before merging 
+
+Usage:       sv_vcf_sort <vcf file> 
+
+Required Arguments:
+    vcf file       sv vcf file 
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $vcf = $ARGV[0];
+die "FATAL ERROR: vcf file required\n$usage\n" if(! defined $vcf);
+
+undef my %sv;
+my $ovcf = $vcf; 
+$ovcf =~ s/\.vcf/\.sorted\.vcf/;
+$ovcf =~ s/\.gz//;
+open IN, "less $vcf | ";
+open OUT, ">$ovcf"; 
+while(<IN>){
+	chomp;
+	if($_ =~ /^\#/) { print OUT $_,"\n"; } 
+	else { 	
+		my @r = split /\t/, $_;
+		my $c = $r[0]; my $s = $r[1];
+		my $e=$s+1; undef my $cl;
+		my @info = split /\;/, $r[7];
+		foreach my $i (@info) { 
+			$e = $i if($i =~ /^END=/);
+			$cl = $i if($i =~ /^SVTYPE=/);
+		}
+		next if(! defined $cl);
+		$e =~ s/END=//; 
+		$sv{$cl}{$c}{$s}{$e}=$_; 
+	}	
+}close IN;
+
+foreach my $cl (sort keys %sv){
+foreach my $c (sort keys %{$sv{$cl}}){
+foreach my $s (sort {$a<=>$b} keys  %{$sv{$cl}{$c}}){
+foreach my $e (sort {$a<=>$b} keys %{$sv{$cl}{$c}{$s}}){ 
+	print OUT $sv{$cl}{$c}{$s}{$e},"\n"; 
+
+} 
+}
+}
+}
+close OUT; 

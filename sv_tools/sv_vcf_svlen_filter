@@ -1,0 +1,39 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        sv_vcf_svlen_filter
+About:       Sort a SV VCF before merging 
+
+Usage:       sv_vcf_svlen_filter <vcf file> [max svlen] 
+
+Required Arguments:
+    vcf file       sv vcf file 
+
+Optional Arguments:
+   max svlen      maximum svlen [default: 15e6]
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $vcf = $ARGV[0];
+my $cut = $ARGV[1];
+$cut = 15e6 if(! defined $cut); 
+die "FATAL ERROR: vcf file required\n$usage\n" if(! defined $vcf);
+
+undef my %sv;
+open IN, "less $vcf | ";
+while(<IN>){
+	chomp;
+	if($_ =~ /^\#/) { print $_,"\n"; } 
+	else { 	
+		my @r = split /\t/, $_;
+		my @info = split /\;/, $r[7];
+		undef my $len;
+		foreach my $i (@info) { 
+			$len = $i if($i =~ /^SVLEN=/); 
+		}
+		next if(! defined $len);
+		$len =~ s/SVLEN=//;
+		print "$_\n" if(abs($len) <= $cut && abs($len) >= 50);
+	}	
+}close IN;

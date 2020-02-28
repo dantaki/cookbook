@@ -1,0 +1,145 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        vep2bed
+About:       convert vep to bed format 
+
+Usage:       vep2bed [vep file] [pli cutoff] [gnomad cutoff]
+
+Options:
+    vep file         FILE     file containing VEP annotations
+    pli cutoff       FLOAT    threshold for pLI [0.9]
+    gnomad cutoff    FLOAT    gnomad allele frequency threshold [0.01] 
+
+Notes:
+    default behavior prints out predicted damagaing variants
+  
+    output is formatted as BED with 0-base positions
+    
+    compress and index output with indexbed 
+    
+    gnomAD_AF is required in the EXTRA column
+    use the --af_gnomad option when running vep
+
+Author:
+   Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+# LOF ANNOTATIONS
+# https://uswest.ensembl.org/info/genome/variation/prediction/predicted_data.html
+my @lof = qw/
+transcript_ablation
+splice_acceptor_variant
+splice_donor_variant
+stop_gained
+frameshift_variant
+stop_lost
+start_lost
+/;
+undef my %lof;
+foreach (@lof) { $lof{$_}++; } 
+
+my $vep = $ARGV[0];
+$vep = "/dev/stdin" if(! defined $ARGV[0]);
+
+my $pli_cut = $ARGV[1];
+$pli_cut = 0.9 if(! defined $pli_cut);
+die "FATAL ERROR: pLI must be a float between 0 and 1\n$usage\n" if($pli_cut < 0 || $pli_cut > 1);
+
+my $columns = $ARGV[3];
+my $def=1; undef my @cols;
+if(defined $columns) { 
+	$def=0; 
+	@cols = split /,/, $columns;
+}
+
+my $af_cut = $ARGV[2];
+$af_cut=0.01 if(! defined $af_cut);
+
+## Load pli scores
+undef my %pli;
+open IN, "/home/dantakli/resources/exac_nonpsych_z_pli.txt";
+<IN>;
+while(<IN>){
+	chomp;
+	my @r = split /\t/, $_;
+	my $trx = $r[0];
+	my $gen = $r[1];
+	my $pli = $r[19];
+	$pli{$trx}=$pli;
+	$pli{$gen}=$pli; 
+}close IN;
+
+# print out lofs
+my $var_key="#Uploaded_variation";
+my $loc_key="Location";
+my $allele_key="Allele";
+my $func_key="Consequence";
+my $feat_key="Feature";
+my $extra_key="Extra";
+
+undef my %col;
+open IN, $vep;
+while(<IN>){
+	chomp;
+	next if($_ =~ /^\#\#/);
+	my @r = split /\t/, $_;
+	if($_ =~ /^#Uploaded_variation/) {
+		# check if header is formatted correctly
+		for(my $i=0; $i<scalar(@r); $i++) { $col{$r[$i]}=$i; }
+		check_ind(\%col,$var_key); check_ind(\%col,$loc_key); check_ind(\%col,$allele_key);
+		check_ind(\%col,$func_key); check_ind(\%col,$feat_key); check_ind(\%col,$extra_key);
+	} else {
+		my $func = $r[$col{$func_key}]; 
+		# skip variant if not LoF
+		next unless(exists $lof{$func});
+		# get transcript and gene symbol ids
+		my $trx = $r[$col{$feat_key}];
+		my @ext = split /\;/, $r[$col{$extra_key}];
+		my $sym = '-9'; # NAN
+		# convert extra column to hash
+		undef my %ext;
+		foreach my $e (@ext) { 
+			my ($k,$v) = split /\=/, $e;
+			$ext{$k}=$v;
+		}
+		$sym = $ext{"SYMBOL"} if(exists $ext{"SYMBOL"});
+		# allele frequency filter
+		my $af = 0;
+		$af = $ext{"gnomAD_AF"} if(exists $ext{"gnomAD_AF"});
+		next if($af > $af_cut);
+
+		# get pli score for both transcript and gene symbol
+		my $pli = "nan";
+		$pli = $pli{$trx} if(exists $pli{$trx});
+		my $gp = "nan";
+		$gp = $pli{$sym} if(exists $pli{$sym});
+		# if both transcript and gene symbol have 
+		# scores, take the greater of the two
+		if($pli ne "nan" && $gp ne "nan") { $pli=$gp if($gp > $pli); } 
+		# if the transcript pli does not exist
+		# use the gene symbol pli 
+		$pli = $gp if($pli eq "nan" && $gp ne "nan");		
+		
+		# skip variant if pli score is under threshold
+		next if($pli eq "nan");
+		next if($pli < $pli_cut);
+	
+		# parse genomic position
+		my ($chrom,$pos) = split /:/, $r[$col{$loc_key}];
+		my $start = $pos; undef my $end;
+		if($start =~ /-/){ 
+			($start,$end) = split /-/, $start;
+		}
+		$end=$start if(! defined $end);
+		$start--; # convert 1-base to 0-base
+		
+		print "$chrom\t$start\t$end\t$_\n"; 	
+	}
+
+}close IN;
+
+sub check_ind {
+	my ($col,$key) = @_;
+	die "FATAL ERROR: cannot find column '${key}' in header\n" unless(exists $$col{$key});
+}

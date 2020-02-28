@@ -1,0 +1,37 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $fl = $ARGV[0];
+
+undef my $tot;
+undef my $sec;
+undef my $sup;
+undef my $dup;
+undef my $map;
+undef my $pair;
+undef my $r1; undef my $r2;
+undef my $prop;
+undef my $pmap; #paired mapped
+undef my $sing;
+undef my $disc;
+undef my $disc_hi;
+
+open IN, "$fl"; 
+while(<IN>){
+	chomp;
+	my @r = split / /, $_;
+	$tot = $r[0] if($_ =~ /in total/);	
+	$sec = $r[0] if($_ =~ /secondary/);	
+	$sup = $r[0] if($_ =~ /supplementary/);	
+	$dup = $r[0] if($_ =~ /duplicates/);	
+	$map = $r[0] if($_ =~ /mapped \(/);	
+	$pair = $r[0] if($_ =~ /paired in seq/);	
+	$r1 = $r[0] if($_ =~ /read1/);	
+	$r2 = $r[0] if($_ =~ /read2/);	
+	$prop = $r[0] if($_ =~ /properly paired/);	
+	$pmap = $r[0] if($_ =~ /with itself/);	
+	$sing = $r[0] if($_ =~ /singletons/);	
+	$disc = $r[0] if($_ =~ /with mate mapped to a different chr/ && $_ !~ /mapQ/);	
+	$disc_hi = $r[0] if($_ =~ /with mate mapped to a different chr/ && $_ =~ /mapQ/);	
+}close IN;
+
+print "$tot\t$sec\t$sup\t$dup\t$map\t$pair\t$r1\t$r2\t$prop\t$pmap\t$sing\t$disc\t$disc_hi\n";

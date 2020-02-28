@@ -1,0 +1,37 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        markdup
+About:       Mark duplicates with sambamba
+
+Usage:       markdup <bam file> [threads] [tmp dir] [output file] 
+
+Required Arguments:
+    bam file       sorted bam file
+
+Optional Arguments:
+    threads        number of threads [default: 1]
+    tmp dir        path to temporary directory
+    output file    path to output file [default: in.sorted.bam]
+
+Notes: 
+    markdup requires the user to have sambamba 
+    to be in the environment path
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $bam = $ARGV[0];
+die "FATAL ERROR: bam file required\n$usage\n" if(! defined $bam);
+
+
+my $tmpdir = $ARGV[2];
+$tmpdir = "--tmpdir ".$tmpdir if(defined $tmpdir);
+$tmpdir = "" if(! defined $tmpdir);
+
+my $threads= $ARGV[1];
+$threads=1 if(! defined $threads);
+my $obam = $bam; $obam =~ s/\.bam$/\.markdup\.bam/;
+my $cmd = "sambamba markdup --overflow-list-size 600000 $tmpdir -t $threads $bam $obam";
+system($cmd); 

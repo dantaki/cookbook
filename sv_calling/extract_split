@@ -1,0 +1,43 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        extract_split
+About:       extract split paired-end
+
+Usage:       extract_split <bam file> [threads] [outdir] 
+
+Required Arguments:
+    bam file    PATH        bam file
+
+Optional Arguments:
+    threads     INT         number of threads [default: 1]
+    outdir      PATH        output directory
+
+Notes: 
+    extract_split requires samtools to be in the environment path
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $bam = $ARGV[0];
+die "FATAL ERROR: bam file required\n$usage\n" if(! defined $bam);
+
+my @bam = split /\//, $bam;
+my $obam = pop @bam; $obam =~ s/\.bam/\.split\.bam/;
+
+my $outdir = $ARGV[2];
+if(! defined $outdir) { 
+	$outdir = join "/", @bam;
+} 
+
+$outdir = $outdir."/" if($outdir !~ /\/$/);
+my $out = "$outdir$obam";
+
+my $threads= $ARGV[1];
+$threads=1 if(! defined $threads);
+
+
+my $cmd = "samtools view -h -@ $threads $bam | /home/dantakli/bin/extractSplitReads_BwaMem -i stdin | samtools view -hb -@ $threads -o $out"; 
+
+system($cmd); 

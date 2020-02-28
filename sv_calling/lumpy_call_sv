@@ -1,0 +1,50 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        lumpy_call_sv
+About:       extract split paired-end
+
+Usage:       lumpy_call_sv <bam file> <exclude> [outdir] [discbam] [splitbam] 
+
+Required Arguments:
+    bam file    PATH        bam file
+    exclude     PATH        bed file of excluded regions
+
+Optional Arguments:
+    outdir      PATH        output directory
+    discbam     PATH        discordant paired end bam
+    splitbam    PATH        split read bam
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+';
+
+my $bam = $ARGV[0];
+die "FATAL ERROR: bam file required\n$usage\n" if(! defined $bam);
+
+my $exc = $ARGV[1];
+die "FATAL ERROR: exclude bed file required\n$usage\n" if(! defined $exc);
+
+my @bam = split /\//, $bam;
+
+# VCF OUTPUT
+my $vcf = pop @bam; 
+$vcf =~ s/\.bam/\.lumpy\.sv\.vcf/;
+my $outdir = $ARGV[2];
+if(! defined $outdir) { 
+	$outdir = join "/", @bam;
+} 
+$outdir = $outdir."/" if($outdir !~ /\/$/);
+$vcf = "$outdir$vcf";
+
+my $disc = $bam; $disc =~ s/\.bam/\.disc\.bam/;
+$disc = $ARGV[3] if(defined $ARGV[3]);
+
+my $split = $bam; $split =~ s/\.bam/\.split\.bam/;
+$split = $ARGV[4] if(defined $ARGV[4]);
+
+
+my $lumpy = "/home/dantakli/bin/speedseq/bin/lumpyexpress";
+my $cmd = "$lumpy -B $bam -S $split -D $disc -o $vcf -x $exc -P -m 1 -v";
+
+system($cmd); 

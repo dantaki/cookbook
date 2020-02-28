@@ -1,0 +1,3 @@
+#!/bin/sh
+bgzip -f $1
+tabix -f $1\.gz

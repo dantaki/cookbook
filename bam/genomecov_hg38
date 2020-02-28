@@ -1,0 +1,36 @@
+#!/usr/bin/perl
+use strict; use warnings;
+my $usage='
+Tool:        genomecov_hg38
+About:       wrapper for bedtools genomecov for hg38 bam files 
+
+Usage:       genomecov_hg38 <bam file> [output file] 
+
+Required Arguments:
+    bam file        unsorted bam file
+
+Optional Arguments:
+    output file    path to output file [default: in.genomecov.txt]
+
+Notes: 
+    genomecov requires the user to have bedtools to be in the 
+    environment path
+
+Author:
+    Danny Antaki, <dantaki at ucsd dot edu>
+
+';
+
+my $genome = "/home/dantakli/resources/hg38.genome";
+
+my $bam = $ARGV[0];
+die "FATAL ERROR: bam file required\n$usage\n" if(! defined $bam);
+my $output = $ARGV[1];
+if(! defined $output){ 
+	$output=$bam; 
+	$output =~ s/\.bam/\.genomecov\.txt/;
+}
+
+my $cmd = "bedtools genomecov -ibam $bam -g $genome >$output";
+system($cmd);
+
